@@ -58,21 +58,33 @@ class PT_uint32:
         if not self.signed:
             v = int(v & 0xffffffff)
         return v, pos
+    def protobuf(self):
+        return "uint32"
 
 class PT_int32(PT_uint32):
     signed = True
+    def protobuf(self):
+        return "sint32"
 class PT_uint16(PT_uint32):
     max_length = 3
+    def protobuf(self):
+        return "uint16"
 class PT_int16(PT_int32):
     signed = True
     max_length = 3
+    def protobuf(self):
+        return "sint16"
 class PT_byte(PT_uint32):
     max_length = 2
+    def protobuf(self):
+        return "uint8"
 
 class PT_string:
     is_int = False
     is_dynamic_string = True
     max_length = 64
+    def protobuf(self):
+        return "string"
     def encode(self, out, v):
         out.append(len(v))
         out.extend(bytearray(v))

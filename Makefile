@@ -84,6 +84,11 @@ $(OUT)compile_time_request.o: $(patsubst %.c, $(OUT)src/%.o.ctr,$(src-y)) ./scri
 	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict -t "$(CC);$(AS);$(LD);$(OBJCOPY);$(OBJDUMP);$(STRIP)" $(OUT)compile_time_request.txt $(OUT)compile_time_request.c
 	$(Q)$(CC) $(CFLAGS) -c $(OUT)compile_time_request.c -o $@
 
+$(OUT)compile_time_request.proto: $(patsubst %.c, $(OUT)src/%.o.ctr,$(src-y)) ./scripts/generateprotobuf.py
+	@echo "  Building $@"
+	$(Q)cat $(patsubst %.c, $(OUT)src/%.o.ctr,$(src-y)) | tr -s '\0' '\n' > $(OUT)compile_time_request.txt
+	$(Q)$(PYTHON) ./scripts/generateprotobuf.py -d $(OUT)klipper.dict -t "$(CC);$(AS);$(LD);$(OBJCOPY);$(OBJDUMP);$(STRIP)" $(OUT)compile_time_request.txt $(OUT)compile_time_request.proto
+
 ################ Auto generation of "board/" include file link
 
 create-board-link:
@@ -123,6 +128,8 @@ menuconfig:
 .DELETE_ON_ERROR:
 
 all: $(target-y)
+
+proto: $(OUT)compile_time_request.proto
 
 clean:
 	$(Q)rm -rf $(OUT)

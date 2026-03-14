@@ -4,3 +4,8 @@ out
 .config
 .config.old
 klippy/.version
+fuzz/
+test/fuzzing/lpm_mutator/factory/
+test/fuzzing/lpm_mutator/protobuf/genfiles/
+*.o
+.gdb_history

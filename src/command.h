@@ -38,18 +38,11 @@
 #define sendf(FMT, args...)                     \
     command_sendf(_DECL_ENCODER(FMT) , ##args )
 
-#ifndef FUZZING
 // Shut down the machine (also declares a static string to transmit)
 #define shutdown(msg)                           \
     sched_shutdown(_DECL_STATIC_STR(msg))
 #define try_shutdown(msg)                       \
     sched_try_shutdown(_DECL_STATIC_STR(msg))
-#else
-#define shutdown(msg)                           \
-    exit(1);
-#define try_shutdown(msg)                       \
-    exit(1);
-#endif
 
 #define MESSAGE_MIN 5
 #define MESSAGE_MAX 64

@@ -19,23 +19,25 @@ static uint8_t next_sequence = MESSAGE_DEST;
 static uint32_t
 command_encode_ptr(void *p)
 {
-    if (sizeof(size_t) > sizeof(uint32_t))
+    if (sizeof(size_t) > sizeof(uint32_t)) {
         if (p >= 4096) {
-            shutdown("Invalid pointer range")
+            shutdown("Invalid pointer range");
         }
         return p - console_receive_buffer();
+    }
     return (size_t)p;
 }
 
 void *
 command_decode_ptr(uint32_t v)
 {
-    if (sizeof(size_t) > sizeof(uint32_t))
+    if (sizeof(size_t) > sizeof(uint32_t)) {
         if (v >= 4096) {
-            shutdown("Invalid pointer range")
+            shutdown("Invalid pointer range");
         }
         return console_receive_buffer() + v;
-    return (void*)(size_t)v;
+    }
+    return (void*)(size_t)v;   
 }
 
 
@@ -133,11 +135,7 @@ command_parsef(uint8_t *p, uint8_t *maxend
     }
     return p;
 error:
-#ifndef FUZZING
     shutdown("Command parser error");
-#else
-    exit(1);
-#endif
 }
 
 // Encode a message
@@ -201,11 +199,7 @@ command_encodef(uint8_t *buf, const struct command_encoder *ce, va_list args)
     }
     return p - buf + MESSAGE_TRAILER_SIZE;
 error:
-#ifndef FUZZING
     shutdown("Message encode error");
-#else
-    exit(1);
-#endif
 }
 
 // Add header and trailer bytes to a message block
@@ -301,10 +295,10 @@ command_find_block(uint8_t *buf, uint_fast8_t buf_len, uint_fast8_t *pop_count)
         goto need_more_data;
     if (buf[msglen-MESSAGE_TRAILER_SYNC] != MESSAGE_SYNC)
         goto error;
+#ifndef FUZZING
     uint16_t msgcrc = ((buf[msglen-MESSAGE_TRAILER_CRC] << 8)
                        | buf[msglen-MESSAGE_TRAILER_CRC+1]);
     uint16_t crc = crc16_ccitt(buf, msglen-MESSAGE_TRAILER_SIZE);
-#ifndef FUZZING
     if (crc != msgcrc)
         goto error;
 #endif
@@ -351,6 +345,16 @@ nak:
 void
 command_dispatch(uint8_t *buf, uint_fast8_t msglen)
 {
+#ifdef FUZZING
+    uint8_t *p = buf;
+    uint8_t *msgend = &buf[msglen];
+    uint_fast16_t cmdid = command_parse_msgid(&p);
+    const struct command_parser *cp = command_lookup_parser(cmdid);
+    uint32_t args[READP(cp->num_args)];
+    p = command_parsef(p, msgend, cp, args);
+    void (*func)(uint32_t*) = READP(cp->func);
+    func(args);
+#else
     uint8_t *p = &buf[MESSAGE_HEADER_SIZE];
     uint8_t *msgend = &buf[msglen-MESSAGE_TRAILER_SIZE];
     while (p < msgend) {
@@ -358,16 +362,15 @@ command_dispatch(uint8_t *buf, uint_fast8_t msglen)
         const struct command_parser *cp = command_lookup_parser(cmdid);
         uint32_t args[READP(cp->num_args)];
         p = command_parsef(p, msgend, cp, args);
-#ifndef FUZZING
         if (sched_is_shutdown() && !(READP(cp->flags) & HF_IN_SHUTDOWN)) {
             sched_report_shutdown();
             continue;
         }
         irq_poll();
-#endif
         void (*func)(uint32_t*) = READP(cp->func);
         func(args);
     }
+#endif
 }
 
 // Send an ack message to the host (notifying that it can send more data)

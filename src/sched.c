@@ -327,15 +327,24 @@ sched_try_shutdown(uint_fast8_t reason)
 }
 
 static jmp_buf shutdown_jmp;
+static jmp_buf fuzzer_return_point;
+
 
 // Force the machine to immediately run the shutdown handlers
 void
 sched_shutdown(uint_fast8_t reason)
 {
+#ifndef FUZZING
     irq_disable();
     longjmp(shutdown_jmp, reason);
+#else 
+    longjmp(fuzzer_return_point, 1);
+#endif
 }
 
+int set_fuzzing_jmp() {
+    return setjmp(fuzzer_return_point);
+}
 
 /****************************************************************
  * Startup

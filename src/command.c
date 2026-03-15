@@ -348,12 +348,14 @@ command_dispatch(uint8_t *buf, uint_fast8_t msglen)
 #ifdef FUZZING
     uint8_t *p = buf;
     uint8_t *msgend = &buf[msglen];
-    uint_fast16_t cmdid = command_parse_msgid(&p);
-    const struct command_parser *cp = command_lookup_parser(cmdid);
-    uint32_t args[READP(cp->num_args)];
-    p = command_parsef(p, msgend, cp, args);
-    void (*func)(uint32_t*) = READP(cp->func);
-    func(args);
+    while (p < msgend) {
+        uint_fast16_t cmdid = command_parse_msgid(&p);
+        const struct command_parser *cp = command_lookup_parser(cmdid);
+        uint32_t args[READP(cp->num_args)];
+        p = command_parsef(p, msgend, cp, args);
+        void (*func)(uint32_t*) = READP(cp->func);
+        func(args);
+    }
 #else
     uint8_t *p = &buf[MESSAGE_HEADER_SIZE];
     uint8_t *msgend = &buf[msglen-MESSAGE_TRAILER_SIZE];

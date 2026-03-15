@@ -504,7 +504,7 @@ message query_ds18b20 {
     sint32 max_value = 5;
 }
 
-message klipperMessage {
+message AnyMessage {
     oneof content {
         debug_read debug_read = 1;
         debug_write debug_write = 2;
@@ -609,6 +609,6 @@ message klipperMessage {
     }
 }
         
-message klipperMessageSequence {
-    repeated klipperMessage sequence = 1;
+message MultiMessage {
+    repeated AnyMessage sequence = 1;
 }

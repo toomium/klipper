@@ -33,7 +33,7 @@ extern "C" MyMutatorBase* afl_custom_init(void *afl, unsigned int seed) {
     bool isSingleFuzzingMode;
     if (!!env_var) {
         g_msg_id = getMessageId(env_var);
-        if (env_var == "KLIPPERMESSAGESEQUENCE") {
+        if (strcmp(env_var, "MULTIMESSAGE") == 0) {
             isSingleFuzzingMode = false;
         }
         else {
@@ -106,8 +106,19 @@ extern "C" size_t afl_custom_fuzz(MyMutatorBase *mutator, // return value from a
         }
     }
 
+    if (g_debug) {
+        fprintf(stderr, "[FUZZ] Before mutations:\n");
+        mutator->print();
+    }
+
     // mutate protobuf
     mutator->mutate(max_size);
+
+    if (g_debug) {
+        fprintf(stderr, "[FUZZ] After mutations:\n");
+        mutator->print();
+    }
+
 
     // serialize
     std::string proto = mutator->serialize();
@@ -169,13 +180,16 @@ extern "C" size_t afl_custom_post_process(MyMutatorBase *mutator, uint8_t *buf,
         return 0;
     }
 
+    if (g_debug) {
+        mutator->print();
+    }
+
     size_t klipper_size = mutator->convertToKlipper(mutator->mutated_out, g_max_size);
 
     *out_buf = mutator->mutated_out;
 
 
     if (g_debug) {
-        mutator->print();
         // Hex dump
         fprintf(stderr, "[POST] Produced raw bytes: ");
         for (size_t i = 0; i < std::min(klipper_size, (size_t)64); i++) {

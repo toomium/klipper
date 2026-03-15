@@ -5,6 +5,7 @@
 #include "_mutator_factory.h"
 #include <google/protobuf/descriptor.h>
 #include "compile_time_request.pb.h"
+#include <cctype>
 
 const size_t g_max_size = 65535;
 static bool g_debug = false;
@@ -64,17 +65,22 @@ static bool is_wrapper_type(const google::protobuf::Message& msg,
 
 
 static uint8_t* encode_message(const google::protobuf::Message& msg, 
-                                   uint8_t* buf) {
+                                   uint8_t* buf, size_t max_size) {
     using namespace google::protobuf;
     
     auto desc = msg.GetDescriptor();
     auto refl = msg.GetReflection();
     uint8_t* p = buf;
+    uint8_t* maxend = p + max_size;
     
     // Iteriere über alle Felder in Reihenfolge
     for (int i = 0; i < desc->field_count(); i++) {
         auto field = desc->field(i);
         
+        if (p > maxend) {
+            return p;
+        }
+
         // Field Typ bestimmen
         switch (field->type()) {
             case FieldDescriptor::TYPE_UINT32: {
@@ -117,13 +123,9 @@ static uint8_t* encode_message(const google::protobuf::Message& msg,
                 const Message& nested = refl->GetMessage(msg, field);
                 
                 uint32_t wrapped_value;
-                if (is_wrapper_type(nested, wrapped_value)) {
-                    // Es ist ein Wrapper (uint8, uint16, etc.)
-                    p = encode_int(p, wrapped_value);
-                } else {
-                    // Rekursiv normale Message encodieren
-                    p = encode_message(nested, p);
-                }
+                is_wrapper_type(nested, wrapped_value);
+                // Es ist ein Wrapper (uint8, uint16, etc.)
+                p = encode_int(p, wrapped_value);
                 break;
             }
             
@@ -136,7 +138,7 @@ static uint8_t* encode_message(const google::protobuf::Message& msg,
     return p;
 }
 
-static size_t convert(const google::protobuf::Message& msg, 
+static size_t convertSingleMessage(const google::protobuf::Message& msg, 
                         uint8_t* buf, size_t max_size, messageID id) {
 
     uint8_t* p = buf;
@@ -146,14 +148,50 @@ static size_t convert(const google::protobuf::Message& msg,
     p = encode_msgid(p, static_cast<uint_fast16_t>(id));
                             
     // write parameters
-    p = encode_message(msg, p);
-    size_t size = p - start;
+    p = encode_message(msg, p, max_size);
     
-    if (size > max_size) {
-        return 0; // Error: buffer zu klein
+    return p - start;
+}
+
+static size_t convertMultiMessage(const google::protobuf::Message& raw_seq, 
+                        uint8_t* buf, size_t max_size) {
+    const MultiMessage* seq = 
+        dynamic_cast<const MultiMessage*>(&raw_seq);
+
+    uint8_t* p = buf;
+    uint8_t* start = p;
+    size_t remaining = max_size;
+
+    for (int i = 0; i < seq->sequence_size(); i++) {
+        auto &msg = seq->sequence(i);
+
+        // we need to map protobuf enums back to the field name
+        int case_enum = msg.content_case();
+        if (case_enum == 0) {
+            continue;
+        }
+        messageID id = static_cast<messageID>(case_enum + 1);
+
+        std::string msg_name = getMessageString(id);
+        std::transform(msg_name.begin(), msg_name.end(), msg_name.begin(), ::tolower);
+        
+        // get matching protobuf message
+        auto desc = msg.GetDescriptor();
+        auto refl = msg.GetReflection();
+
+        auto field = desc->FindFieldByName(msg_name);
+
+        auto &msg_field = refl->GetMessage(msg, field);
+
+
+        // convert to klipper
+        size_t bytes_written = convertSingleMessage(msg_field, p , remaining, id);
+        //size_t bytes_written = 0;
+        p += bytes_written;
+        remaining -= bytes_written;
     }
-    
-    return size;
+
+    return p - start;
 }
 
 
@@ -205,7 +243,12 @@ public:
         this->Mutate(&proto, max_size);
     }
     size_t convertToKlipper(uint8_t *buf, size_t max_size){
-        return convert(proto, buf, max_size, msg_id);
+        if (isSingleFuzzingMode) {
+            return convertSingleMessage(proto, buf, max_size, msg_id);
+        }
+        else {
+            return convertMultiMessage(proto, buf, max_size);
+        }
     }
     void clear(){
         proto.Clear();
